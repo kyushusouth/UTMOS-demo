@@ -1,11 +1,13 @@
 import argparse
-import polars as pl
 import pathlib
-import tqdm
-from torch.utils.data import Dataset, DataLoader
-import torchaudio
-from score import Score
+
+import polars as pl
 import torch
+import torchaudio
+import tqdm
+from torch.utils.data import DataLoader, Dataset
+
+from score import Score
 
 
 def get_arg():
@@ -29,19 +31,22 @@ def get_arg():
 
 class Dataset(Dataset):
     def __init__(self, dir_path: pathlib.Path):
-        dir_path = pathlib.Path("/home/minami/lip2sp/results/base_hubert")
-        date_lst = [
-            "20240621_134621",
-            "20240621_155144",
-            "20240621_202419",
-            "20240622_003027",
-            "20240622_103111",
-            "20240623_001016",
-            "20240622_161416",
-        ]
         self.wavlist = []
-        for date in date_lst:
-            self.wavlist += (dir_path / date).glob("**/*.wav")
+
+        # dir_path = pathlib.Path("/home/minami/lip2sp/results/base_hubert")
+        # date_lst = [
+        #     "20240621_134621",
+        #     "20240621_155144",
+        #     "20240621_202419",
+        #     "20240622_003027",
+        #     "20240622_103111",
+        #     "20240623_001016",
+        #     "20240622_161416",
+        # ]
+        # for date in date_lst:
+        #     self.wavlist += (dir_path / date).glob("**/*.wav")
+
+        self.wavlist += dir_path.glob("**/*.wav")
 
         _, self.sr = torchaudio.load(self.wavlist[0])
 
@@ -83,7 +88,7 @@ class Dataset(Dataset):
 def main():
     args = get_arg()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = "cuda"
+
     if args.mode == "predict_file":
         assert (
             args.inp_path is not None
@@ -94,15 +99,11 @@ def main():
         wav, sr = torchaudio.load(args.inp_path)
         scorer = Score(ckpt_path=args.ckpt_path, input_sample_rate=sr, device=device)
         score = scorer.score(wav.to(device))
-        with open(args.out_path, "w") as fw:
-            fw.write(str(score[0]))
+        print(score[0])
+        # with open(args.out_path, "w") as fw:
+        #     fw.write(str(score[0]))
     else:
-        # assert args.inp_dir is not None, "inp_dir is required when mode is predict_dir."
-        # assert args.bs is not None, "bs is required when mode is predict_dir."
-        # assert args.inp_path is None, "inp_path should be None."
-        # assert args.inp_dir.exists()
-        # assert args.inp_dir.is_dir()
-        dataset = Dataset(dir_path=None)
+        dataset = Dataset(dir_path=args.inp_dir)
         loader = DataLoader(
             dataset,
             batch_size=32,
@@ -111,10 +112,12 @@ def main():
             num_workers=args.num_workers,
         )
         sr = dataset.sr
-        scorer = Score(ckpt_path=args.ckpt_path, input_sample_rate=sr, device=device)
+        scorer = Score(
+            ckpt_path="/home/minami/UTMOS-demo/epoch=3-step=7459.ckpt",
+            input_sample_rate=sr,
+            device=device,
+        )
         results = []
-        # with open(args.out_path, "w"):
-        #     pass
         for batch in tqdm.tqdm(loader):
             wav, date_lst, speaker_lst, sample_lst, kind_lst = batch
             scores = scorer.score(wav.to(device))
@@ -128,9 +131,9 @@ def main():
             #     ):
             #         fw.write(f"{date},{speaker},{sample},{kind},{str(s)}\n")
         df = pl.DataFrame(
-            data=results, schema=["score", "date", "speaker", "sample", "kind"]
+            data=results, schema=["score", "date", "speaker", "filename", "kind"]
         )
-        df.write_csv("./result.csv")
+        df.write_csv(str(args.out_path))
 
 
 if __name__ == "__main__":
