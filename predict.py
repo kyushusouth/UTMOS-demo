@@ -106,7 +106,7 @@ def main():
         dataset = Dataset(dir_path=args.inp_dir)
         loader = DataLoader(
             dataset,
-            batch_size=32,
+            batch_size=8,
             collate_fn=dataset.collate_fn,
             shuffle=True,
             num_workers=args.num_workers,
@@ -117,10 +117,12 @@ def main():
             input_sample_rate=sr,
             device=device,
         )
+
         results = []
         for batch in tqdm.tqdm(loader):
             wav, date_lst, speaker_lst, sample_lst, kind_lst = batch
-            scores = scorer.score(wav.to(device))
+            with torch.no_grad():
+                scores = scorer.score(wav.to(device))
             for s, date, speaker, sample, kind in zip(
                 scores, date_lst, speaker_lst, sample_lst, kind_lst
             ):
